@@ -8,75 +8,89 @@ contract MultiSigWallet {
     event Revoke(address indexed owner, uint indexed txId);
     event Execute(uint indexed txId);
 
-    struct Transaction {
-        address to;
-        uint value;
-        bytes data;
-        bool executed;
+// Define a struct for transactions
+struct Transaction {
+    address to;
+    uint value;
+    bytes data;
+    bool executed;
+}
+
+// Declare an array to store all wallet owners
+address[] public owners;
+// Declare a mapping to check if an address is an owner
+mapping(address => bool) public isOwner;
+// Declare a variable to store the number of required approvals
+uint public required;
+
+// Declare an array to store all submitted transactions
+Transaction[] public transactions;
+// Declare a mapping to store approval status for each transaction
+mapping(uint => mapping(address => bool)) public approved;
+
+// Declare a modifier to only allow function execution by wallet owners
+modifier onlyOwner() {
+    require(isOwner[msg.sender], "not owner");
+    _;
+}
+
+// Declare a modifier to check if a transaction ID exists
+modifier txExists(uint _txId) {
+    require(_txId < transactions.length, "tx does not exist");
+    _;
+}
+
+// Declare a modifier to check if a transaction has not been approved by the caller
+modifier notApproved(uint _txId) {
+    require(!approved[_txId][msg.sender], "tx already approved");
+    _;
+}
+
+// Declare a modifier to check if a transaction has not been executed
+modifier notExecuted(uint _txId) {
+    require(!transactions[_txId].executed, "tx already executed");
+    _;
+}
+
+// Contract constructor to set up wallet with owners and required approvals
+constructor(address[] memory _owners, uint _required) {
+    require(_owners.length > 0, "owners required");
+    require(
+        _required > 0 && _required <= _owners.length,
+        "invalid required number of owners"
+    );
+
+    for (uint i; i < _owners.length; i++) {
+        address owner = _owners[i];
+
+        require(owner != address(0), "invalid owner");
+        require(!isOwner[owner], "owner is not unique");
+
+        isOwner[owner] = true;
+        owners.push(owner);
     }
 
-    address[] public owners;
-    mapping(address => bool) public isOwner;
-    uint public required;
+    required = _required;
+}
 
-    Transaction[] public transactions;
-    // mapping from tx id => owner => bool
-    mapping(uint => mapping(address => bool)) public approved;
+// Fallback function to allow deposit of ether
+receive() external payable {
+    emit Deposit(msg.sender, msg.value);
+}
 
-    modifier onlyOwner() {
-        require(isOwner[msg.sender], "not owner");
-        _;
-    }
-
-    modifier txExists(uint _txId) {
-        require(_txId < transactions.length, "tx does not exist");
-        _;
-    }
-
-    modifier notApproved(uint _txId) {
-        require(!approved[_txId][msg.sender], "tx already approved");
-        _;
-    }
-
-    modifier notExecuted(uint _txId) {
-        require(!transactions[_txId].executed, "tx already executed");
-        _;
-    }
-
-    constructor(address[] memory _owners, uint _required) {
-        require(_owners.length > 0, "owners required");
-        require(
-            _required > 0 && _required <= _owners.length,
-            "invalid required number of owners"
-        );
-
-        for (uint i; i < _owners.length; i++) {
-            address owner = _owners[i];
-
-            require(owner != address(0), "invalid owner");
-            require(!isOwner[owner], "owner is not unique");
-
-            isOwner[owner] = true;
-            owners.push(owner);
-        }
-
-        required = _required;
-    }
-
-    receive() external payable {
-        emit Deposit(msg.sender, msg.value);
-    }
-
-    function submit(
-        address _to,
-        uint _value,
-        bytes calldata _data
-    ) external onlyOwner {
-        transactions.push(
-            Transaction({to: _to, value: _value, data: _data, executed: false})
-        );
-        emit Submit(transactions.length - 1);
-    }
+// Function to allow owners to submit new transactions
+function submit(
+    address _to,
+    uint _value,
+    bytes calldata _data
+) external onlyOwner {
+    // Add new transaction to the array
+    transactions.push(
+        Transaction({to: _to, value: _value, data: _data, executed: false})
+    );
+    // Emit event to track the submitted transaction
+    emit Submit(transactions.length - 1);
+}
 
     function approve(
         uint _txId
